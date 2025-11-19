@@ -13,9 +13,10 @@ const overlayStyles = {
 }
 
 const dialogStyles = {
-  width: 'min(540px, 100%)',
-  maxHeight: '90vh',
-  overflowY: 'auto',
+  width: 'min(700px, 100%)',
+  maxHeight: '95vh',
+  display: 'flex',
+  flexDirection: 'column',
   borderRadius: '16px',
   boxShadow: 'var(--shadow-lg)',
   backgroundColor: 'var(--bg-elevated)',
@@ -41,13 +42,20 @@ const closeButtonStyles = {
 
 const bodyStyles = {
   padding: '16px 24px 24px 24px',
+  overflowY: 'auto',
+  flex: '1 1 auto',
+  minHeight: 0,
 }
 
 const footerStyles = {
-  padding: '0 24px 24px 24px',
+  padding: '16px 24px 24px 24px',
   display: 'flex',
   justifyContent: 'flex-end',
   gap: '12px',
+  flexWrap: 'wrap',
+  flexShrink: 0,
+  borderTop: '1px solid var(--border-subtle)',
+  backgroundColor: 'var(--bg-elevated)',
 }
 
 function Modal({ open, onClose, title, children, footer }) {

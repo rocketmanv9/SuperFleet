@@ -7,6 +7,8 @@ function VehiclePanel({
   selectedVehicleId,
   onSelectVehicle,
   onAddVehicleClick,
+  onEditVehicle,
+  onDeleteVehicle,
   showActiveOnly,
   onToggleActiveOnly,
   organization,
@@ -46,9 +48,8 @@ function VehiclePanel({
               <article
                 key={vehicle.id}
                 className={`vehicle-card ${vehicle.id === selectedVehicleId ? 'selected' : ''}`}
-                onClick={() => onSelectVehicle(vehicle.id)}
               >
-                <div>
+                <div onClick={() => onSelectVehicle(vehicle.id)} style={{ cursor: 'pointer' }}>
                   <h3>{vehicle.name}</h3>
                   <p className="muted">
                     {vehicle.make} / {vehicle.model} / {vehicle.year ?? '—'}
@@ -59,6 +60,41 @@ function VehiclePanel({
                   <span className={`status ${vehicle.status ?? 'active'}`}>
                     {vehicle.status ?? 'active'}
                   </span>
+                </div>
+                {vehicle.maintenance_summary && (
+                  <div className="vehicle-summary" style={{ fontSize: '0.85rem', marginTop: '0.5rem', color: 'var(--text-secondary)' }}>
+                    <span>{vehicle.maintenance_summary.total_items} tasks</span>
+                    <span> / </span>
+                    <span>{vehicle.maintenance_summary.completed_logs} done</span>
+                    {vehicle.maintenance_summary.overdue_items > 0 && (
+                      <>
+                        <span> / </span>
+                        <span style={{ color: 'var(--status-danger)', fontWeight: 600 }}>
+                          {vehicle.maintenance_summary.overdue_items} overdue
+                        </span>
+                      </>
+                    )}
+                  </div>
+                )}
+                <div className="vehicle-actions" style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                  {onEditVehicle && (
+                    <button
+                      type="button"
+                      className="ghost small"
+                      onClick={() => onEditVehicle(vehicle)}
+                    >
+                      Edit
+                    </button>
+                  )}
+                  {onDeleteVehicle && (
+                    <button
+                      type="button"
+                      className="danger small"
+                      onClick={() => onDeleteVehicle(vehicle.id)}
+                    >
+                      Delete
+                    </button>
+                  )}
                 </div>
               </article>
             ))

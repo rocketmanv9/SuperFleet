@@ -1,3 +1,5 @@
+import { formatPhoneNumber } from '../utils/formatters'
+
 function AuthPage({
   authMode,
   loginForm,
@@ -62,13 +64,62 @@ function AuthPage({
                 placeholder="Avery Park"
               />
             </label>
+            <fieldset className="mode-toggle" style={{ border: 'none', padding: 0 }}>
+              <legend className="muted small">Workspace mode</legend>
+              <div style={{ display: 'flex', gap: '1rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                  <input
+                    type="radio"
+                    name="register-mode"
+                    value="create"
+                    checked={registerForm.mode === 'create'}
+                    onChange={() => onRegisterChange('mode', 'create')}
+                  />
+                  Create organization
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                  <input
+                    type="radio"
+                    name="register-mode"
+                    value="join"
+                    checked={registerForm.mode === 'join'}
+                    onChange={() => onRegisterChange('mode', 'join')}
+                  />
+                  Join with invite
+                </label>
+              </div>
+            </fieldset>
+            {registerForm.mode === 'create' ? (
+              <label>
+                <span>Organization name</span>
+                <input
+                  value={registerForm.organization_name}
+                  onChange={(event) => onRegisterChange('organization_name', event.target.value)}
+                  placeholder="Northwind Logistics"
+                  required={registerForm.mode === 'create'}
+                />
+              </label>
+            ) : (
+              <label>
+                <span>Invitation token</span>
+                <input
+                  value={registerForm.invite_token}
+                  onChange={(event) => onRegisterChange('invite_token', event.target.value)}
+                  placeholder="Paste invitation token"
+                  required={registerForm.mode === 'join'}
+                />
+              </label>
+            )}
             <label>
-              <span>Organization</span>
+              <span>Phone number</span>
               <input
-                value={registerForm.organization_name}
-                onChange={(event) => onRegisterChange('organization_name', event.target.value)}
-                placeholder="Northwind Logistics"
-                required
+                type="tel"
+                value={registerForm.phone_number}
+                onChange={(event) =>
+                  onRegisterChange('phone_number', formatPhoneNumber(event.target.value))
+                }
+                placeholder="+12345678910"
+                pattern="^\+[0-9]{7,15}$"
               />
             </label>
             <label>
@@ -91,7 +142,13 @@ function AuthPage({
               />
             </label>
             <button type="submit" className="primary" disabled={authLoading || !supabaseReady}>
-              {authLoading ? 'Creating workspace...' : 'Create workspace'}
+              {authLoading
+                ? registerForm.mode === 'create'
+                  ? 'Creating workspace...'
+                  : 'Joining...'
+                : registerForm.mode === 'create'
+                ? 'Create workspace'
+                : 'Join workspace'}
             </button>
             {authError && <p className="error-text">{authError}</p>}
           </form>

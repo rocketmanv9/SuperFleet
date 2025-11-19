@@ -69,4 +69,17 @@ const getTaskStatus = (task, vehicleMileage) => {
   }
 }
 
+export function formatPhoneNumber(value) {
+  if (!value) return ''
+  let input = value.replace(/[^\d+]/g, '')
+  if (input.startsWith('+')) {
+    const digits = input.substring(1).replace(/\D/g, '')
+    input = `+${digits}`
+  } else {
+    const digits = input.replace(/\D/g, '')
+    input = digits ? `+${digits}` : ''
+  }
+  return input
+}
+
 export { currencyFormatter, formatDate, formatMiles, getTaskStatus, numberFormatter }

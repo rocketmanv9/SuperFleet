@@ -1,8 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from './lib/supabaseClient'
+import { mapVehicleData } from './lib/vehicles.js'
 import { AuthPage } from './pages/AuthPage.jsx'
 import { DashboardPage } from './pages/DashboardPage.jsx'
 import { OrganizationSelectorPage } from './pages/OrganizationSelectorPage.jsx'
+import { OrganizationPage } from './pages/OrganizationPage.jsx'
+import { TemplatesPage } from './pages/TemplatesPage.jsx'
+import { AccountPage } from './pages/AccountPage.jsx'
+import { OrgProvider } from './lib/OrgContext.jsx'
+import { Sidebar } from './components/Sidebar.jsx'
+import { Navbar } from './components/Navbar.jsx'
+import { Toast } from './components/Toast.jsx'
 import { VehicleFormModal } from './components/VehicleFormModal.jsx'
 import { MaintenanceLogModal } from './components/MaintenanceLogModal.jsx'
 import { FuelEntryModal } from './components/FuelEntryModal.jsx'
@@ -21,6 +29,7 @@ import { getTaskStatus } from './utils/formatters.js'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const isValidUuid = (value) => typeof value === 'string' && UUID_REGEX.test(value)
+const INVITE_TOKEN_STORAGE_KEY = 'superfleet:pending_invite_token'
 
 const createFormUpdater = (setter) => (field, value) => {
   setter((prev) => ({ ...prev, [field]: value }))
@@ -99,8 +108,17 @@ function App() {
   const [remindersLoading, setRemindersLoading] = useState(supabaseReady)
   const [remindersError, setRemindersError] = useState(null)
 
+  const [templates, setTemplates] = useState([])
+  const [templatesLoading, setTemplatesLoading] = useState(false)
+  const [templatesError, setTemplatesError] = useState(null)
+
   const [toast, setToast] = useState(null)
   const [activeTab, setActiveTab] = useState('status')
+
+  // Invitations state
+  const [invitations, setInvitations] = useState([])
+  const [invitationsLoading, setInvitationsLoading] = useState(false)
+  const [invitationsError, setInvitationsError] = useState(null)
 
   const updateVehicleForm = createFormUpdater(setVehicleForm)
   const updateLogForm = createFormUpdater(setLogForm)
@@ -109,41 +127,40 @@ function App() {
   const updateRegisterForm = createFormUpdater(setRegisterForm)
   const updateInviteForm = createFormUpdater(setInviteForm)
 
-  const appOrg = session?.user?.app_metadata?.organization ?? null
-  const userOrg = session?.user?.user_metadata?.organization ?? null
-  const metadataOrganizationId =
-    appOrg?.id ??
-    session?.user?.app_metadata?.organization_id ??
-    userOrg?.id ??
-    session?.user?.user_metadata?.organization_id ??
-    null
-  const metadataOrganizationName =
-    appOrg?.name ??
-    session?.user?.app_metadata?.organization_name ??
-    userOrg?.name ??
-    session?.user?.user_metadata?.organization_name ??
-    null
-  const metadataOrganizationType =
-    appOrg?.type ??
-    session?.user?.app_metadata?.organization_type ??
-    userOrg?.type ??
-    session?.user?.user_metadata?.organization_type ??
-    null
+  const fetchTemplates = useCallback(async () => {
+    if (!supabaseReady) return
+    setTemplatesLoading(true)
+    setTemplatesError(null)
+    try {
+      const { data, error } = await supabase.rpc('get_vehicle_templates')
+      if (error) throw error
+      setTemplates(data || [])
+    } catch (error) {
+      setTemplatesError(error.message)
+      setToast({ tone: 'danger', message: 'Could not load vehicle templates.' })
+    } finally {
+      setTemplatesLoading(false)
+    }
+  }, [supabaseReady, supabase])
+
   const currentUserName = session?.user?.user_metadata?.full_name ?? session?.user?.email ?? 'Fleet Manager'
   const membershipRole = profileOrganization?.role ?? null
   const currentUserRole =
-    session?.user?.app_metadata?.role ??
     session?.user?.user_metadata?.role ??
     membershipRole ??
     'member'
   const organization = useMemo(() => {
+    // Only use IDs that are valid UUIDs from database, ignore metadata
+    const validProfileId = profileOrganization?.id && isValidUuid(profileOrganization.id) ? profileOrganization.id : null
+    const validSelectedId = selectedOrganizationId && isValidUuid(selectedOrganizationId) ? selectedOrganizationId : null
+    
     return {
-      id: profileOrganization?.id ?? null,
-      name: profileOrganization?.name ?? metadataOrganizationName ?? 'Fleet',
-      type: profileOrganization?.type ?? metadataOrganizationType ?? 'personal',
+      id: validProfileId ?? validSelectedId ?? null,
+      name: profileOrganization?.name ?? 'Fleet',
+      type: profileOrganization?.type ?? 'personal',
       role: profileOrganization?.role ?? membershipRole ?? 'member',
     }
-  }, [metadataOrganizationName, metadataOrganizationType, membershipRole, profileOrganization])
+  }, [membershipRole, profileOrganization, selectedOrganizationId])
   const organizationId = organization.id
   const organizationName = organization.name
   const organizationType = organization.type
@@ -203,39 +220,123 @@ function App() {
     const storedOrgId = restoreOrgSelection(session.user.id)
     if (storedOrgId && isValidUuid(storedOrgId)) {
       setSelectedOrganizationId(storedOrgId)
-      return
     }
-    if (isValidUuid(metadataOrganizationId)) {
-      setSelectedOrganizationId(metadataOrganizationId)
-      return
-    }
-    setSelectedOrganizationId(null)
-  }, [session, metadataOrganizationId])
+    // Let the organization membership resolver handle setting the org ID from database
+  }, [session])
 
   useEffect(() => {
     if (!session) {
       setVehicles([])
-    setMembers([])
-    setMembersError(null)
-    setMembersLoading(false)
-    setInviteForm(initialInviteForm)
-    setInviteSubmitting(false)
-    setOrganizations([])
+      setMembers([])
+      setMembersError(null)
+      setMembersLoading(false)
+      setInviteForm(initialInviteForm)
+      setInviteSubmitting(false)
+      setOrganizations([])
+      setOrganizationsError(null)
+      setOrganizationsLoading(false)
+      setSelectedOrganizationId(null)
+      setProfileOrganization(null)
+      setReminders([])
+      setSelectedVehicleId(null)
+      return
+    }
+  }, [session])
+
+  // Load organizations for selector when user has memberships
+  useEffect(() => {
+    if (!session || !supabaseReady) return
+    setOrganizationsLoading(true)
     setOrganizationsError(null)
-    setOrganizationsLoading(false)
-    setSelectedOrganizationId(null)
-    setProfileOrganization(null)
-    setReminders([])
-    setSelectedVehicleId(null)
-  }
-}, [session])
+    supabase
+      .from('organization_members')
+      .select(
+        `
+          organization_id,
+          role,
+          organization:organizations (id, name, metadata)
+        `,
+      )
+      .eq('user_id', session.user.id)
+      .order('created_at', { ascending: true })
+      .then(({ data, error }) => {
+        if (error) {
+          setOrganizationsError(error.message)
+          setOrganizations([])
+          return
+        }
+        const mapped = (data || []).map((row) => {
+          const orgRecord = row.organization || {}
+            const metadata = orgRecord.metadata || {}
+            return {
+              id: orgRecord.id || row.organization_id || null,
+              name: orgRecord.name || 'Fleet',
+              type: metadata.type || metadata.org_type || 'personal',
+              role: row.role || 'member',
+            }
+        })
+        setOrganizations(mapped)
+      })
+      .finally(() => setOrganizationsLoading(false))
+  }, [session, supabaseReady, supabase])
+
+  // Load pending invitations for the user's email
+  useEffect(() => {
+    if (!session || !supabaseReady) return
+    const email = session.user.email
+    if (!email) return
+    setInvitationsLoading(true)
+    setInvitationsError(null)
+    supabase
+      .from('organization_invitations')
+      .select('id, organization_id, inviter_id, invitee_email, token, role, status, organization:organizations (id, name)')
+      .eq('invitee_email', email)
+      .eq('status', 'pending')
+      .then(({ data, error }) => {
+        if (error) {
+          setInvitationsError(error.message)
+          setInvitations([])
+          return
+        }
+        const mapped = (data || []).map((row) => ({
+          id: row.id,
+          organization_id: row.organization_id,
+          organization_name: row.organization?.name || 'Fleet',
+          role: row.role,
+          token: row.token,
+          status: row.status,
+        }))
+        setInvitations(mapped)
+      })
+      .finally(() => setInvitationsLoading(false))
+  }, [session, supabaseReady, supabase])
+
+  // When user chooses an organization, persist and set profile context
+  const handleSelectOrganization = useCallback(
+    (orgId) => {
+      if (!session) return
+      setSelectedOrganizationId(orgId)
+      persistOrgSelection(session.user.id, orgId)
+      const picked = organizations.find((o) => o.id === orgId)
+      if (picked) {
+        setProfileOrganization(picked)
+      }
+    },
+    [organizations, session],
+  )
+
+  // If selection was restored from storage, hydrate profileOrganization when list loads
+  useEffect(() => {
+    if (!session) return
+    if (!selectedOrganizationId) return
+    const picked = organizations.find((o) => o.id === selectedOrganizationId)
+    if (picked) {
+      setProfileOrganization(picked)
+    }
+  }, [organizations, selectedOrganizationId, session])
 
   useEffect(() => {
     if (!session || !supabaseReady) return
-    if (metadataOrganizationId) {
-      setProfileOrganization(null)
-      return
-    }
 
     let cancelled = false
     const resolveOrganizationFromMembership = async () => {
@@ -267,13 +368,18 @@ function App() {
       if (data) {
         const orgRecord = data.organization ?? {}
         const metadata = orgRecord.metadata ?? {}
+        const orgId = orgRecord.id ?? data.organization_id ?? null
         const fallbackOrg = {
-          id: orgRecord.id ?? data.organization_id ?? null,
+          id: orgId,
           name: orgRecord.name ?? 'Fleet',
           type: metadata.type ?? metadata.org_type ?? 'personal',
           role: data.role ?? 'member',
         }
         setProfileOrganization(fallbackOrg)
+        // Also set selectedOrganizationId if we have a valid UUID
+        if (orgId && isValidUuid(orgId) && !selectedOrganizationId) {
+          setSelectedOrganizationId(orgId)
+        }
       }
     }
 
@@ -282,7 +388,53 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [session, supabaseReady, metadataOrganizationId, supabase])
+  }, [session, supabaseReady, supabase])
+
+  // Auto-accept stored invite token after email confirmation/login
+  useEffect(() => {
+    if (!session || !supabaseReady) return
+    let token = null
+    try {
+      token = localStorage.getItem(INVITE_TOKEN_STORAGE_KEY)
+    } catch (_e) {}
+    if (!token || !isValidUuid(token)) return
+    const accept = async () => {
+      const { data, error } = await supabase.rpc('accept_invitation', { p_token: token })
+      if (error) {
+        setToast({ tone: 'warning', message: error.message })
+        return
+      }
+      try {
+        localStorage.removeItem(INVITE_TOKEN_STORAGE_KEY)
+      } catch (_e) {}
+      if (isValidUuid(data)) {
+        setSelectedOrganizationId(data)
+      }
+      setToast({ tone: 'success', message: 'Invitation accepted.' })
+      // refresh memberships
+      supabase
+        .from('organization_members')
+        .select(`organization_id, role, organization:organizations (id, name, metadata)`) 
+        .eq('user_id', session.user.id)
+        .order('created_at', { ascending: true })
+        .then(({ data: members }) => {
+          if (members) {
+            const mapped = members.map((row) => {
+              const orgRecord = row.organization || {}
+              const metadata = orgRecord.metadata || {}
+              return {
+                id: orgRecord.id || row.organization_id || null,
+                name: orgRecord.name || 'Fleet',
+                type: metadata.type || metadata.org_type || 'personal',
+                role: row.role || 'member',
+              }
+            })
+            setOrganizations(mapped)
+          }
+        })
+    }
+    accept()
+  }, [session, supabaseReady, supabase])
 
   const createPersonalOrganization = useCallback(async () => {
     if (!supabaseReady || !session) {
@@ -357,28 +509,45 @@ function App() {
     }
   }, [isFleetOrg])
 
-  const fetchVehicles = useCallback(async () => {
-    if (!supabaseReady || !organizationId) return
+  const fetchVehicles = useCallback(async (orgId = null) => {
+    const targetOrgId = orgId || organizationId
+    
+    if (!supabaseReady || !targetOrgId) {
+      setVehiclesLoading(false)
+      return
+    }
+    
+    // Validate that we have a proper UUID before calling the RPC
+    if (!isValidUuid(targetOrgId)) {
+      setVehiclesError('Invalid organization ID format')
+      setVehiclesLoading(false)
+      return
+    }
+    
     setVehiclesLoading(true)
     setVehiclesError(null)
-    let query = supabase
-      .from('vehicles')
-      .select('id,name,make,model,year,current_mileage,status,vin,organization_id,deleted_at')
-      .eq('organization_id', organizationId)
-      .order('name', { ascending: true })
+    try {
+      const { data, error } = await supabase.rpc('get_org_vehicles', {
+        p_org_id: targetOrgId
+      })
+      
+      if (error) {
+        if (error.message.includes('access')) {
+          throw new Error('You do not have access to this organization')
+        }
+        throw error
+      }
 
-    if (showActiveOnly) {
-      query = query.is('deleted_at', null)
-    }
-
-    const { data, error } = await query
-    if (error) {
+      // Map the RPC response to our frontend vehicle structure
+      const mapped = (data ?? []).map(mapVehicleData)
+      setVehicles(mapped)
+    } catch (error) {
       setVehiclesError(error.message)
-    } else {
-      setVehicles(data ?? [])
+      setToast({ tone: 'danger', message: error.message })
+    } finally {
+      setVehiclesLoading(false)
     }
-    setVehiclesLoading(false)
-  }, [organizationId, showActiveOnly, supabaseReady])
+  }, [organizationId, supabaseReady])
 
   const fetchMembers = useCallback(async () => {
     if (!supabaseReady || !organizationId || !isFleetOrg) return
@@ -404,28 +573,32 @@ function App() {
     setRemindersError(null)
     const { data, error } = await supabase
       .from('maintenance_items')
-      .select('id,title,due_date,due_mileage,risk_level,vehicle:vehicles(id,name,current_mileage,organization_id)')
-      .eq('vehicle.organization_id', organizationId)
+      .select('id,title,next_due_date,next_due_mileage,risk_level,vehicle_id')
+      .eq('organization_id', organizationId)
       .is('deleted_at', null)
-      .order('due_date', { ascending: true, nullsLast: false })
+      .order('next_due_date', { ascending: true, nullsLast: false })
       .limit(6)
 
     if (error) {
       setRemindersError(error.message)
     } else {
       const parsed =
-        data?.map((item) => ({
-          id: item.id,
-          title: item.title,
-          vehicle_name: item.vehicle?.name ?? 'Vehicle',
-          due_date: item.due_date,
-          due_mileage: item.due_mileage,
-          risk_level: item.risk_level,
-          vehicle_mileage: item.vehicle?.current_mileage ?? null,
-        })) ?? []
+        data?.map((item) => {
+          const vehicle = vehicles.find(v => v.id === item.vehicle_id)
+          return {
+            id: item.id,
+            title: item.title,
+            vehicle_name: vehicle?.name ?? 'Vehicle',
+            due_date: item.next_due_date,
+            due_mileage: item.next_due_mileage,
+            risk_level: item.risk_level,
+            vehicle_mileage: vehicle?.current_mileage ?? null,
+          }
+        }) ?? []
       setReminders(parsed)
     }
     setRemindersLoading(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [organizationId, supabaseReady])
 
   const fetchMaintenance = useCallback(async () => {
@@ -434,10 +607,10 @@ function App() {
     setMaintenanceError(null)
     const { data, error } = await supabase
       .from('maintenance_items')
-      .select('id,title,due_date,due_mileage,risk_level,status,vehicle_id,deleted_at,vehicle:vehicles(id,current_mileage)')
+      .select('id,title,next_due_date,next_due_mileage,risk_level,vehicle_id,deleted_at')
       .eq('vehicle_id', selectedVehicleId)
       .is('deleted_at', null)
-      .order('due_date', { ascending: true, nullsLast: false })
+      .order('next_due_date', { ascending: true, nullsLast: false })
 
     if (error) {
       setMaintenanceError(error.message)
@@ -467,13 +640,25 @@ function App() {
   }, [selectedVehicleId, supabaseReady])
 
   useEffect(() => {
+    if (!supabaseReady) return
+    fetchTemplates()
+  }, [supabaseReady, fetchTemplates])
+
+  useEffect(() => {
     if (!organizationId || !supabaseReady) return
     fetchVehicles()
     if (isFleetOrg) {
       fetchMembers()
     }
     fetchReminders()
-  }, [organizationId, supabaseReady, fetchVehicles, fetchMembers, fetchReminders, isFleetOrg])
+  }, [
+    organizationId,
+    supabaseReady,
+    fetchVehicles,
+    fetchMembers,
+    fetchReminders,
+    isFleetOrg,
+  ])
 
   useEffect(() => {
     if (!selectedVehicleId || !supabaseReady) return
@@ -577,23 +762,36 @@ function App() {
       setAuthError('Connect Supabase to create a real account.')
       return
     }
-    if (!registerForm.organization_name.trim()) {
+    const isCreate = registerForm.mode === 'create'
+    if (isCreate && !registerForm.organization_name.trim()) {
       setAuthError('Organization name keeps your data scoped. Please add one.')
       return
     }
-    const organizationIdForUser = `org_${randomId()}`
+    if (!isCreate && !registerForm.invite_token.trim()) {
+      setAuthError('Invitation token required to join an existing workspace.')
+      return
+    }
+    const inviteToken = registerForm.invite_token.trim()
+    const fullName = (registerForm.full_name || '').trim()
+    const phoneNumber = (registerForm.phone_number || '').trim()
+    const orgName = (registerForm.organization_name || '').trim()
+    // If creating, seed metadata with new pseudo org id for app context; DB trigger creates real org
+    const organizationIdForUser = isCreate ? `org_${randomId()}` : null
     const metadata = {
       full_name: registerForm.full_name || registerForm.email,
-      organization_name: registerForm.organization_name,
+      organization_name: isCreate ? registerForm.organization_name : null,
       organization_id: organizationIdForUser,
-      role: 'owner',
-      organization_type: 'personal',
+      role: isCreate ? 'owner' : 'member',
+      organization_type: isCreate ? 'personal' : null,
+      signup_mode: registerForm.mode,
+      phone_number: (registerForm.phone_number || '').trim(),
     }
     setAuthError(null)
     setAuthLoading(true)
     const { data, error } = await supabase.auth.signUp({
       email: registerForm.email,
       password: registerForm.password,
+      phone: phoneNumber,
       options: {
         data: metadata,
       },
@@ -603,15 +801,78 @@ function App() {
       setAuthError(error.message)
       return
     }
-    setRegisterForm(initialRegisterForm)
     if (data?.session) {
       setSession(data.session)
-      setToast({ tone: 'success', message: 'Welcome aboard! Workspace created.' })
+      // Upsert profile with phone and name when available
+      try {
+        await supabase.from('profiles').upsert([
+          {
+            id: data.session.user.id,
+            full_name: fullName || registerForm.email,
+            email: registerForm.email,
+            phone: phoneNumber || null,
+          },
+        ])
+      } catch (_e) {}
+
+      if (!isCreate) {
+        if (isValidUuid(inviteToken)) {
+          const { error: inviteError } = await supabase.rpc('accept_invitation', {
+            p_token: inviteToken,
+          })
+          if (inviteError) {
+            setToast({ tone: 'warning', message: inviteError.message })
+          } else {
+            setToast({ tone: 'success', message: 'Invitation accepted. Welcome!' })
+            // Manually fetch orgs after accepting invite
+            fetchOrganizations(data.session.user.id)
+          }
+        } else {
+          setToast({ tone: 'warning', message: 'Invalid invitation token format.' })
+        }
+      } else {
+        // Ensure personal organization exists with provided orgName when creating account
+        try {
+          const { data: ensuredOrg, error: ensureErr } = await supabase
+            .rpc('ensure_personal_org_for_user', {
+              p_user_id: data.session.user.id,
+              p_org_name: orgName || undefined,
+            })
+            .single()
+
+          if (!ensureErr && ensuredOrg?.id) {
+            // hydrate profileOrganization and selected org
+            const picked = {
+              id: ensuredOrg.id,
+              name: ensuredOrg.name || 'Fleet',
+              type: 'personal',
+              role: 'owner',
+            }
+            setProfileOrganization(picked)
+            setSelectedOrganizationId(picked.id)
+            // add to organizations list
+            setOrganizations((prev) => [picked, ...prev.filter((o) => o.id !== picked.id)])
+          }
+        } catch (_e) {}
+        setToast({ tone: 'success', message: 'Welcome aboard! Workspace created.' })
+      }
       setAuthMode('signIn')
+      setRegisterForm(initialRegisterForm)
       return
     }
-    setToast({ tone: 'info', message: 'Check your inbox to confirm the new account.' })
+    if (!isCreate && isValidUuid(inviteToken)) {
+      try {
+        localStorage.setItem(INVITE_TOKEN_STORAGE_KEY, inviteToken)
+      } catch (_e) {}
+    }
+    setToast({
+      tone: 'info',
+      message: isCreate
+        ? 'Check your inbox to confirm the new account.'
+        : 'Confirm email, then use your invite token to finish joining.',
+    })
     setAuthMode('signIn')
+    setRegisterForm(initialRegisterForm)
   }
 
   const handleSignOut = async () => {
@@ -626,7 +887,9 @@ function App() {
       setToast({ tone: 'danger', message: 'Connect Supabase before adding vehicles.' })
       return
     }
+
     const ensuredOrgId = await ensureOrganizationContext()
+
     if (!ensuredOrgId) {
       setToast({
         tone: 'danger',
@@ -635,52 +898,85 @@ function App() {
       return
     }
 
+    const templateId =
+      vehicleForm.template && vehicleForm.template !== 'none' ? vehicleForm.template : null
+
+    if (templateId && !isValidUuid(templateId)) {
+      setToast({
+        tone: 'danger',
+        message: `Invalid template format. Expected a valid identifier.`,
+      })
+      return
+    }
+
+    // Build metadata object with all additional vehicle details
+    const metadata = {
+      trim: vehicleForm.trim || null,
+      license_plate: vehicleForm.license_plate || null,
+      transmission: vehicleForm.transmission || null,
+      drivetrain: vehicleForm.drivetrain || null,
+      cab_style: vehicleForm.cab_style || null,
+      bed_length: vehicleForm.bed_length || null,
+      wheelbase_inches: vehicleForm.wheelbase_inches ? Number(vehicleForm.wheelbase_inches) : null,
+      tire_size: vehicleForm.tire_size || null,
+      tire_pressure_psi_front: vehicleForm.tire_pressure_psi_front ? Number(vehicleForm.tire_pressure_psi_front) : null,
+      tire_pressure_psi_rear: vehicleForm.tire_pressure_psi_rear ? Number(vehicleForm.tire_pressure_psi_rear) : null,
+      engine_oil_quarts: vehicleForm.engine_oil_quarts ? Number(vehicleForm.engine_oil_quarts) : null,
+      coolant_gallons: vehicleForm.coolant_gallons ? Number(vehicleForm.coolant_gallons) : null,
+      transmission_fluid_quarts: vehicleForm.transmission_fluid_quarts ? Number(vehicleForm.transmission_fluid_quarts) : null,
+      fuel_tank_gallons: vehicleForm.fuel_tank_gallons ? Number(vehicleForm.fuel_tank_gallons) : null,
+      notes: vehicleForm.notes || null,
+      maintenance_schedule: vehicleForm.maintenance_schedule || null,
+      confidence: vehicleForm.confidence || null,
+    }
+
     const payload = {
-      name: vehicleForm.name,
+      id: vehicleForm.id || undefined,
+      nickname: vehicleForm.name,
       make: vehicleForm.make,
       model: vehicleForm.model,
       year: vehicleForm.year ? Number(vehicleForm.year) : null,
       vin: vehicleForm.vin || null,
-      current_mileage: vehicleForm.current_mileage ? Number(vehicleForm.current_mileage) : null,
-      template: vehicleForm.template !== 'none' ? vehicleForm.template : null,
+      engine: vehicleForm.engine_name || null,
+      odometer: vehicleForm.current_mileage ? Number(vehicleForm.current_mileage) : 0,
+      organization_id: ensuredOrgId,
+      template_id: templateId,
+      metadata: metadata,
     }
 
-    if (!payload.name || !payload.make) {
+    if (!payload.nickname || !payload.make) {
       setToast({ tone: 'warning', message: 'Name and make are required to add a vehicle.' })
+      return
+    }
+
+    if (!payload.vin || payload.vin.length !== 17) {
+      setToast({ tone: 'warning', message: 'A valid 17-character VIN is required to add a vehicle.' })
       return
     }
 
     setVehicleSubmitting(true)
 
-    const { data, error } = await supabase
-      .from('vehicles')
-      .insert([
-        {
-          name: payload.name,
-          make: payload.make,
-          model: payload.model,
-          year: payload.year,
-          vin: payload.vin,
-          current_mileage: payload.current_mileage,
-          organization_id: ensuredOrgId,
-          maintenance_template: payload.template,
-        },
-      ])
-      .select()
+    const { data, error } = await supabase.from('vehicles').upsert(payload).select().single()
 
     setVehicleSubmitting(false)
-
     if (error) {
       setToast({ tone: 'danger', message: error.message })
       return
     }
 
-    const createdVehicle = data?.[0]
-    if (createdVehicle) {
-      setVehicles((prev) => [createdVehicle, ...prev])
+    if (data) {
+      const vehicleId = data.id
       setVehicleForm(initialVehicleForm)
       setVehicleModalOpen(false)
-      setToast({ tone: 'success', message: 'Vehicle added successfully.' })
+      setToast({
+        tone: 'success',
+        message: vehicleForm.id ? 'Vehicle updated.' : 'Vehicle added successfully.',
+      })
+      // Refresh vehicles using RPC with the correct org ID
+      await fetchVehicles(ensuredOrgId)
+      if (vehicleId) {
+        setSelectedVehicleId(vehicleId)
+      }
     }
   }
 
@@ -758,12 +1054,12 @@ function App() {
     }
 
     setInviteSubmitting(true)
-    const { error } = await supabase.from('organization_invites').insert([
+    const { error } = await supabase.from('organization_invitations').insert([
       {
-        email: inviteForm.email,
-        role: inviteForm.role,
         organization_id: organizationId,
-        invited_by: session?.user?.id,
+        inviter_id: session?.user?.id,
+        invitee_email: inviteForm.email,
+        role: inviteForm.role,
       },
     ])
 
@@ -776,6 +1072,26 @@ function App() {
 
     setInviteForm(initialInviteForm)
     setToast({ tone: 'success', message: 'Invite sent.' })
+    // refresh invitations list
+    const email = session?.user?.email
+    if (email) {
+      supabase
+        .from('organization_invitations')
+        .select('id, organization_id, inviter_id, invitee_email, token, role, status, organization:organizations (id, name)')
+        .eq('invitee_email', email)
+        .eq('status', 'pending')
+        .then(({ data }) => {
+          const mapped = (data || []).map((row) => ({
+            id: row.id,
+            organization_id: row.organization_id,
+            organization_name: row.organization?.name || 'Fleet',
+            role: row.role,
+            token: row.token,
+            status: row.status,
+          }))
+          setInvitations(mapped)
+        })
+    }
   }
 
   const handleLogSubmit = async (event) => {
@@ -992,6 +1308,9 @@ function App() {
     maintenanceSummary,
     dueSoonTasks,
     overdueTasks,
+    templates,
+    templatesLoading,
+    templatesError,
     vehiclesPanelProps: {
       displayedVehicles,
       vehiclesLoading,
@@ -999,6 +1318,37 @@ function App() {
       selectedVehicleId,
       onSelectVehicle: setSelectedVehicleId,
       onAddVehicleClick: () => setVehicleModalOpen(true),
+      onEditVehicle: (vehicle) => {
+        setVehicleForm({
+          id: vehicle.id,
+          name: vehicle.name || '',
+          make: vehicle.make || '',
+          model: vehicle.model || '',
+          year: vehicle.year || '',
+          current_mileage: vehicle.current_mileage || '',
+          vin: vehicle.vin || '',
+          template: vehicle.maintenance_template || 'none',
+        })
+        setVehicleModalOpen(true)
+      },
+      onDeleteVehicle: async (vehicleId) => {
+        if (!supabaseReady || !organizationId) return
+        const { error } = await supabase
+          .from('vehicles')
+          .delete()
+          .eq('id', vehicleId)
+          .eq('organization_id', organizationId)
+        if (error) {
+          setToast({ tone: 'danger', message: error.message })
+          return
+        }
+        if (selectedVehicleId === vehicleId) {
+          setSelectedVehicleId(null)
+        }
+        // Refresh vehicles using RPC to maintain consistency
+        await fetchVehicles()
+        setToast({ tone: 'success', message: 'Vehicle deleted.' })
+      },
       showActiveOnly,
       onToggleActiveOnly: () => setShowActiveOnly((prev) => !prev),
       organization,
@@ -1041,6 +1391,52 @@ function App() {
       userRole: currentUserRole,
     },
     onOpenMaintenanceTab: () => setActiveTab('maintenance'),
+    onOpenTemplates: () => setActiveTab('templates'),
+    onAcceptInvite: async (token) => {
+      if (!supabaseReady || !session) return
+      if (!isValidUuid(token)) {
+        setToast({ tone: 'warning', message: 'Invalid invite token.' })
+        return
+      }
+      const { data, error } = await supabase.rpc('accept_invitation', { p_token: token })
+      if (error) {
+        setToast({ tone: 'danger', message: error.message })
+        return
+      }
+      if (isValidUuid(data)) {
+        setSelectedOrganizationId(data)
+      }
+      setToast({ tone: 'success', message: 'Joined organization.' })
+      // Refresh organizations
+      supabase
+        .from('organization_members')
+        .select(`organization_id, role, organization:organizations (id, name, metadata)`)
+        .eq('user_id', session.user.id)
+        .order('created_at', { ascending: true })
+        .then(({ data: members }) => {
+          if (members) {
+            const mapped = members.map((row) => {
+              const orgRecord = row.organization || {}
+              const metadata = orgRecord.metadata || {}
+              return {
+                id: orgRecord.id || row.organization_id || null,
+                name: orgRecord.name || 'Fleet',
+                type: metadata.type || metadata.org_type || 'personal',
+                role: row.role || 'member',
+              }
+            })
+            setOrganizations(mapped)
+          }
+        })
+    },
+  }
+
+  const organizationPageProps = {
+    invitations,
+    invitationsLoading,
+    onAcceptInvite: dashboardProps.onAcceptInvite,
+    teamPanelProps: dashboardProps.teamPanelProps,
+    canInvite: currentUserRole === 'owner' || currentUserRole === 'admin',
   }
 
   if (authLoading && !session) {
@@ -1069,9 +1465,167 @@ function App() {
     )
   }
 
+  const showOrganizationSelector =
+    session && !organizationId && organizations.length > 0
+
+  if (showOrganizationSelector) {
+    return (
+      <OrganizationSelectorPage
+        organizations={organizations}
+        loading={organizationsLoading}
+        error={organizationsError}
+        onSelect={handleSelectOrganization}
+        onSignOut={handleSignOut}
+        onCreate={async (name) => {
+          if (!supabaseReady || !session) return
+          const { data, error } = await supabase
+            .from('organizations')
+            .insert([{ name, owner_id: session.user.id }])
+            .select('id, name, metadata')
+            .single()
+          if (error) {
+            setToast({ tone: 'danger', message: error.message })
+            return
+          }
+            const org = {
+              id: data.id,
+              name: data.name,
+              type: data.metadata?.type || 'fleet',
+              role: 'owner',
+            }
+          // add membership row (owner)
+          await supabase.from('organization_members').insert([
+            { organization_id: data.id, user_id: session.user.id, role: 'owner' },
+          ])
+          setOrganizations((prev) => [...prev, org])
+          handleSelectOrganization(data.id)
+          setToast({ tone: 'success', message: 'Organization created.' })
+        }}
+        onLeave={async (orgId) => {
+          if (!supabaseReady || !session) return
+          // prevent leaving if owner
+          const org = organizations.find((o) => o.id === orgId)
+          if (org?.role === 'owner') {
+            setToast({ tone: 'warning', message: 'Owners cannot leave their own organization.' })
+            return
+          }
+          const { error } = await supabase
+            .from('organization_members')
+            .delete()
+            .eq('organization_id', orgId)
+            .eq('user_id', session.user.id)
+          if (error) {
+            setToast({ tone: 'danger', message: error.message })
+            return
+          }
+          setOrganizations((prev) => prev.filter((o) => o.id !== orgId))
+          if (selectedOrganizationId === orgId) {
+            setSelectedOrganizationId(null)
+            setProfileOrganization(null)
+          }
+          setToast({ tone: 'success', message: 'Left organization.' })
+        }}
+        invitations={invitations}
+        invitationsLoading={invitationsLoading}
+        onAcceptInvite={async (token) => {
+          if (!supabaseReady || !session) return
+          const { data, error } = await supabase.rpc('accept_invitation', { p_token: token })
+          if (error) {
+            setToast({ tone: 'danger', message: error.message })
+            return
+          }
+          const acceptedOrgId = data
+          // refresh memberships
+          const { data: membersData } = await supabase
+            .from('organization_members')
+            .select(
+              `
+                organization_id,
+                role,
+                organization:organizations (id, name, metadata)
+              `,
+            )
+            .eq('user_id', session.user.id)
+            .order('created_at', { ascending: true })
+          if (membersData) {
+            const mapped = (membersData || []).map((row) => {
+              const orgRecord = row.organization || {}
+              const metadata = orgRecord.metadata || {}
+              return {
+                id: orgRecord.id || row.organization_id || null,
+                name: orgRecord.name || 'Fleet',
+                type: metadata.type || metadata.org_type || 'personal',
+                role: row.role || 'member',
+              }
+            })
+            setOrganizations(mapped)
+          }
+          handleSelectOrganization(acceptedOrgId)
+          setInvitations((prev) => prev.filter((i) => i.token !== token))
+          setToast({ tone: 'success', message: 'Invitation accepted.' })
+        }}
+      />
+    )
+  }
+
   return (
-    <>
-      <DashboardPage {...dashboardProps} />
+    <OrgProvider organization={organization}>
+      <div className="app-shell">
+        <Sidebar
+          organization={organization}
+          vehicleCount={displayedVehicles.length}
+          memberCount={membersForUi.length}
+          userRole={currentUserRole}
+          activeTab={activeTab}
+          onSelectTab={setActiveTab}
+          onOpenTemplates={() => setActiveTab('templates')}
+        />
+        <div className="app-main">
+          <Navbar
+            userInfo={{
+              name: currentUserName,
+              role: currentUserRole,
+              email: session?.user?.email ?? '',
+            }}
+            onSignOut={handleSignOut}
+            supabaseReady={supabaseReady}
+          />
+          <main className="dashboard">
+            <Toast toast={toast} onDismiss={() => setToast(null)} />
+            {!supabaseReady && (
+              <section className="banner info">
+                Connect Supabase (<code>VITE_SUPABASE_URL</code> & <code>VITE_SUPABASE_ANON_KEY</code>) to power the live
+                experience.
+              </section>
+            )}
+
+            {(activeTab === 'status' || activeTab === 'maintenance' || activeTab === 'insights') && (
+              <DashboardPage {...dashboardProps} />
+            )}
+            {activeTab === 'templates' && (
+              <TemplatesPage
+                templates={templates}
+                templatesLoading={templatesLoading}
+                templatesError={templatesError}
+              />
+            )}
+            {activeTab === 'organization' && (
+              <OrganizationPage {...organizationPageProps} />
+            )}
+            {activeTab === 'account' && (
+              <AccountPage
+                userInfo={{
+                  name: currentUserName,
+                  role: currentUserRole,
+                  email: session?.user?.email ?? '',
+                }}
+                onUpdateAccount={() => {}}
+                isUpdating={false}
+              />
+            )}
+          </main>
+        </div>
+      </div>
       <VehicleFormModal
         open={vehicleModalOpen}
         onClose={() => setVehicleModalOpen(false)}
@@ -1079,6 +1633,7 @@ function App() {
         onVehicleFormChange={updateVehicleForm}
         onSubmitVehicle={handleVehicleSubmit}
         vehicleSubmitting={vehicleSubmitting}
+        templates={templates}
       />
       <MaintenanceLogModal
         open={maintenanceModalOpen}
@@ -1110,7 +1665,7 @@ function App() {
         canInvite={currentUserRole === 'owner' || currentUserRole === 'admin'}
         roles={roles}
       />
-    </>
+    </OrgProvider>
   )
 }
 

@@ -10,22 +10,32 @@ const personalTabs = [
   { id: 'insights', label: 'Insights' },
 ]
 
-function TabNavigation({ activeTab, onSelect, organization }) {
+function TabNavigation({ activeTab, onSelect, organization, onSignOut, onOpenTemplates }) {
   const isFleet = organization?.type === 'fleet'
   const tabs = isFleet ? fleetTabs : personalTabs
   return (
-    <div className="tab-nav">
+    <nav className="tab-navigation">
       {tabs.map((tab) => (
-        <button
+        <a
           key={tab.id}
-          type="button"
-          className={`tab-button ${activeTab === tab.id ? 'active' : ''}`}
+          href={`#${tab.id}`}
+          className={activeTab === tab.id ? 'active' : ''}
           onClick={() => onSelect(tab.id)}
         >
           {tab.label}
-        </button>
+        </a>
       ))}
-    </div>
+      <a
+        href="#templates"
+        className={activeTab === 'templates' ? 'active' : ''}
+        onClick={() => onOpenTemplates()}
+      >
+        Templates
+      </a>
+      <button type="button" className="ghost" onClick={onSignOut}>
+        Sign Out
+      </button>
+    </nav>
   )
 }
 

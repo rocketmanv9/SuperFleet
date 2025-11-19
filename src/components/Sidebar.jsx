@@ -1,21 +1,28 @@
-const fleetNavSections = [
-  { label: 'Dashboard', hint: 'Overview' },
-  { label: 'Vehicles', hint: 'Fleet list' },
-  { label: 'Maintenance', hint: 'Tasks & logs' },
-  { label: 'Fuel', hint: 'Usage' },
-  { label: 'Team', hint: 'Members' },
-  { label: 'Reminders', hint: 'Alerts' },
+const fleetTabs = [
+  { id: 'status', label: 'Fleet status', hint: 'Overview' },
+  { id: 'maintenance', label: 'Maintenance', hint: 'Tasks' },
+  { id: 'insights', label: 'Insights', hint: 'Stats' },
 ]
 
-const personalNavSections = [
-  { label: 'Status', hint: 'My vehicle' },
-  { label: 'Maintenance', hint: 'Upkeep' },
-  { label: 'Insights', hint: 'Stats' },
+const personalTabs = [
+  { id: 'status', label: 'My vehicle', hint: 'Status' },
+  { id: 'maintenance', label: 'Maintenance', hint: 'Upkeep' },
+  { id: 'insights', label: 'Insights', hint: 'Stats' },
 ]
 
-function Sidebar({ organization, vehicleCount, memberCount, userRole }) {
+import { useState } from 'react'
+
+function Sidebar({
+  organization,
+  vehicleCount,
+  memberCount,
+  userRole,
+  activeTab,
+  onSelectTab,
+  onOpenTemplates,
+}) {
   const isFleet = organization?.type === 'fleet'
-  const navSections = isFleet ? fleetNavSections : personalNavSections
+  const tabs = isFleet ? fleetTabs : personalTabs
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
@@ -25,13 +32,47 @@ function Sidebar({ organization, vehicleCount, memberCount, userRole }) {
         </p>
       </div>
       <ul className="sidebar-nav">
-        {navSections.map((item) => (
-          <li key={item.label}>
-            <span>{item.label}</span>
-            <p>{item.hint}</p>
+        {tabs.map((tab) => (
+          <li key={tab.id}>
+            <button
+              type="button"
+              className={`nav-button ${activeTab === tab.id ? 'active' : ''}`}
+              onClick={() => onSelectTab && onSelectTab(tab.id)}
+            >
+              <span>{tab.label}</span>
+              <p>{tab.hint}</p>
+            </button>
           </li>
         ))}
+        <li>
+          <button
+            type="button"
+            className={`nav-button ${activeTab === 'templates' ? 'active' : ''}`}
+            onClick={onOpenTemplates}
+          >
+            <span>Templates</span>
+            <p>Manage</p>
+          </button>
+        </li>
       </ul>
+      <div className="sidebar-actions">
+        <button
+          type="button"
+          className={`nav-button ${activeTab === 'organization' ? 'active' : ''}`}
+          onClick={() => onSelectTab('organization')}
+        >
+          <span>Organization</span>
+          <p>Invites & Members</p>
+        </button>
+        <button
+          type="button"
+          className={`nav-button ${activeTab === 'account' ? 'active' : ''}`}
+          onClick={() => onSelectTab('account')}
+        >
+          <span>Account</span>
+          <p>Settings</p>
+        </button>
+      </div>
       <div className="sidebar-footer">
         <div>
           <p className="eyebrow">Vehicles</p>

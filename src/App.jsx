@@ -858,7 +858,7 @@ function App() {
             phone: phoneNumber || null,
           },
         ])
-      } catch (_e) {}
+      } catch {}
 
       if (!isCreate) {
         if (isValidUuid(inviteToken)) {
@@ -869,8 +869,7 @@ function App() {
             setToast({ tone: 'warning', message: inviteError.message })
           } else {
             setToast({ tone: 'success', message: 'Invitation accepted. Welcome!' })
-            // Manually fetch orgs after accepting invite
-            fetchOrganizations(data.session.user.id)
+            // Membership/org refresh handled by existing effects after auth/session update
           }
         } else {
           setToast({ tone: 'warning', message: 'Invalid invitation token format.' })
@@ -898,7 +897,7 @@ function App() {
             // add to organizations list
             setOrganizations((prev) => [picked, ...prev.filter((o) => o.id !== picked.id)])
           }
-        } catch (_e) {}
+        } catch {}
         setToast({ tone: 'success', message: 'Welcome aboard! Workspace created.' })
       }
       setAuthMode('signIn')
@@ -908,7 +907,7 @@ function App() {
     if (!isCreate && isValidUuid(inviteToken)) {
       try {
         localStorage.setItem(INVITE_TOKEN_STORAGE_KEY, inviteToken)
-      } catch (_e) {}
+      } catch {}
     }
     setToast({
       tone: 'info',
@@ -1518,7 +1517,7 @@ function App() {
     try {
       await navigator.clipboard.writeText(token)
       setToast({ tone: 'success', message: 'Invite token copied.' })
-    } catch (_error) {
+    } catch {
       setToast({ tone: 'warning', message: 'Clipboard unavailable. Copy token manually.' })
     }
   }

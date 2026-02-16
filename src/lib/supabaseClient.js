@@ -14,7 +14,6 @@ if (supabaseUrl && supabaseAnonKey) {
     },
   })
 } else {
-  // eslint-disable-next-line no-console
   console.warn(
     'Supabase environment variables are missing. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to enable live data.',
   )

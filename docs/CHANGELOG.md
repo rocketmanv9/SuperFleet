@@ -33,3 +33,11 @@
 - Added vehicle search (name/make/model/VIN/year).
 - Added sort controls (name, highest mileage, lowest mileage).
 - Empty-state messaging now distinguishes "no vehicles" vs "no search matches".
+
+### Quality: Lint debt reduction pass (batch 1)
+- Removed unused import from `Sidebar.jsx`.
+- Simplified `OrgContext` exports to satisfy React Fast Refresh lint rule.
+- Removed stale eslint-disable in `supabaseClient.js`.
+- Removed unused `onUpdateAccount` prop from `AccountPage`.
+- Removed undefined `fetchOrganizations(...)` call in auth flow and cleaned several catch blocks.
+- Lint error count reduced significantly (remaining debt still in `App.jsx`).

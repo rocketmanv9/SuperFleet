@@ -1,6 +1,5 @@
 function AccountPage({
   userInfo,
-  onUpdateAccount,
   isUpdating,
 }) {
   return (

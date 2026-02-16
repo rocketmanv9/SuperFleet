@@ -10,8 +10,6 @@ const personalTabs = [
   { id: 'insights', label: 'Insights', hint: 'Stats' },
 ]
 
-import { useState } from 'react'
-
 function Sidebar({
   organization,
   vehicleCount,

@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react'
 import { formatMiles } from '../utils/formatters.js'
 
 function VehiclePanel({
@@ -14,6 +15,42 @@ function VehiclePanel({
   organization,
 }) {
   const isFleet = organization?.type === 'fleet'
+  const [searchQuery, setSearchQuery] = useState('')
+  const [sortMode, setSortMode] = useState('name')
+
+  const filteredVehicles = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+    const searched = !query
+      ? displayedVehicles
+      : displayedVehicles.filter((vehicle) => {
+          const haystack = [
+            vehicle.name,
+            vehicle.make,
+            vehicle.model,
+            vehicle.vin,
+            vehicle.year,
+          ]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase()
+
+          return haystack.includes(query)
+        })
+
+    const sorted = [...searched]
+    sorted.sort((a, b) => {
+      if (sortMode === 'mileage-desc') {
+        return Number(b.current_mileage || 0) - Number(a.current_mileage || 0)
+      }
+      if (sortMode === 'mileage-asc') {
+        return Number(a.current_mileage || 0) - Number(b.current_mileage || 0)
+      }
+      return String(a.name || '').localeCompare(String(b.name || ''))
+    })
+
+    return sorted
+  }, [displayedVehicles, searchQuery, sortMode])
+
   return (
     <section className="panel vehicles-panel">
       <header>
@@ -35,16 +72,31 @@ function VehiclePanel({
         </div>
       </header>
       <div className="vehicles-layout">
-        <div className="vehicle-list">
+        <div className="vehicle-list" style={{ display: 'grid', gap: '0.75rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '0.5rem' }}>
+            <input
+              type="search"
+              placeholder="Search by name, make, model, VIN..."
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+            />
+            <select value={sortMode} onChange={(event) => setSortMode(event.target.value)}>
+              <option value="name">Sort: Name</option>
+              <option value="mileage-desc">Sort: Highest mileage</option>
+              <option value="mileage-asc">Sort: Lowest mileage</option>
+            </select>
+          </div>
+
           {vehiclesLoading ? (
             <p className="muted">Loading vehicles...</p>
-          ) : displayedVehicles.length === 0 ? (
+          ) : filteredVehicles.length === 0 ? (
             <p className="muted">
-              No vehicles yet. Tap “Add vehicle” to get started and we will hydrate maintenance templates
-              automatically.
+              {displayedVehicles.length === 0
+                ? 'No vehicles yet. Tap “Add vehicle” to get started and we will hydrate maintenance templates automatically.'
+                : 'No vehicles match your current search.'}
             </p>
           ) : (
-            displayedVehicles.map((vehicle) => (
+            filteredVehicles.map((vehicle) => (
               <article
                 key={vehicle.id}
                 className={`vehicle-card ${vehicle.id === selectedVehicleId ? 'selected' : ''}`}

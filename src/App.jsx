@@ -119,6 +119,8 @@ function App() {
   const [invitations, setInvitations] = useState([])
   const [invitationsLoading, setInvitationsLoading] = useState(false)
   const [invitationsError, setInvitationsError] = useState(null)
+  const [sentInvitations, setSentInvitations] = useState([])
+  const [sentInvitationsLoading, setSentInvitationsLoading] = useState(false)
 
   const updateVehicleForm = createFormUpdater(setVehicleForm)
   const updateLogForm = createFormUpdater(setLogForm)
@@ -330,6 +332,29 @@ function App() {
       })
       .finally(() => setInvitationsLoading(false))
   }, [session, supabaseReady, supabase])
+
+  // Load invitations this organization has sent (owner/admin view)
+  useEffect(() => {
+    if (!session || !supabaseReady || !organizationId) return
+    if (!(currentUserRole === 'owner' || currentUserRole === 'admin')) return
+
+    setSentInvitationsLoading(true)
+    supabase
+      .from('organization_invitations')
+      .select('id, invitee_email, token, role, status, created_at')
+      .eq('organization_id', organizationId)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false })
+      .then(({ data, error }) => {
+        if (error) {
+          setToast({ tone: 'warning', message: `Could not load sent invites: ${error.message}` })
+          setSentInvitations([])
+          return
+        }
+        setSentInvitations(data || [])
+      })
+      .finally(() => setSentInvitationsLoading(false))
+  }, [session, supabaseReady, supabase, organizationId, currentUserRole])
 
   // When user chooses an organization, persist and set profile context
   const handleSelectOrganization = useCallback(
@@ -1489,10 +1514,44 @@ function App() {
     },
   }
 
+  const handleCopyInviteToken = async (token) => {
+    try {
+      await navigator.clipboard.writeText(token)
+      setToast({ tone: 'success', message: 'Invite token copied.' })
+    } catch (_error) {
+      setToast({ tone: 'warning', message: 'Clipboard unavailable. Copy token manually.' })
+    }
+  }
+
+  const handleRevokeInvite = async (invitationId) => {
+    if (!supabaseReady) return
+
+    const { error: rpcError } = await supabase.rpc('revoke_invitation', { p_invitation_id: invitationId })
+
+    if (rpcError) {
+      const { error: updateError } = await supabase
+        .from('organization_invitations')
+        .update({ status: 'revoked' })
+        .eq('id', invitationId)
+
+      if (updateError) {
+        setToast({ tone: 'danger', message: updateError.message })
+        return
+      }
+    }
+
+    setSentInvitations((prev) => prev.filter((invite) => invite.id !== invitationId))
+    setToast({ tone: 'success', message: 'Invitation revoked.' })
+  }
+
   const organizationPageProps = {
     invitations,
     invitationsLoading,
+    sentInvitations,
+    sentInvitationsLoading,
     onAcceptInvite: dashboardProps.onAcceptInvite,
+    onCopyInviteToken: handleCopyInviteToken,
+    onRevokeInvite: handleRevokeInvite,
     teamPanelProps: dashboardProps.teamPanelProps,
     canInvite: currentUserRole === 'owner' || currentUserRole === 'admin',
   }

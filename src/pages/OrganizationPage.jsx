@@ -49,7 +49,11 @@ const roleDefinitions = [
 function OrganizationPage({
   invitations,
   invitationsLoading,
+  sentInvitations,
+  sentInvitationsLoading,
   onAcceptInvite,
+  onCopyInviteToken,
+  onRevokeInvite,
   teamPanelProps,
   canInvite,
 }) {
@@ -68,7 +72,7 @@ function OrganizationPage({
       <div className="page-content">
         <section className="panel">
           <header>
-            <h3>Pending Invitations</h3>
+            <h3>Incoming Invitations</h3>
           </header>
           {invitationsLoading ? (
             <p>Loading invitations...</p>
@@ -94,6 +98,46 @@ function OrganizationPage({
           )}
         </section>
 
+        {canInvite && (
+          <section className="panel">
+            <header>
+              <h3>Sent Invitations</h3>
+              <p className="muted small">Copy invite tokens or revoke pending invites.</p>
+            </header>
+            {sentInvitationsLoading ? (
+              <p>Loading sent invites...</p>
+            ) : sentInvitations.length === 0 ? (
+              <p className="muted">No pending invites sent from this organization.</p>
+            ) : (
+              <ul className="invite-list">
+                {sentInvitations.map((invite) => (
+                  <li key={invite.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem' }}>
+                    <span>
+                      <strong>{invite.invitee_email}</strong> · role: <strong>{invite.role}</strong>
+                    </span>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button
+                        type="button"
+                        className="ghost small"
+                        onClick={() => onCopyInviteToken(invite.token)}
+                      >
+                        Copy token
+                      </button>
+                      <button
+                        type="button"
+                        className="danger small"
+                        onClick={() => onRevokeInvite(invite.id)}
+                      >
+                        Revoke
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
+
         <section className="panel">
           <header>
             <h3>Team Members</h3>
@@ -110,8 +154,8 @@ function OrganizationPage({
             {roleDefinitions.map((role) => (
               <article key={role.name} className="role-card">
                 <div className="role-header">
-                  <span 
-                    className="role-badge" 
+                  <span
+                    className="role-badge"
                     style={{ backgroundColor: role.color }}
                   >
                     {role.label}

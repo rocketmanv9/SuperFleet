@@ -23,3 +23,13 @@
   - standard columns (`mileage`, `cost`, `time_spent_hours`, `completed_at`)
   - legacy/custom columns (`completion_mileage`, `total_cost`, `labor_hours`, `performed_at`)
 - After completion, app now closes modal and refreshes maintenance, reminders, and vehicles for more reliable UI state.
+
+### Feature: Invitation management controls
+- Added sent-invitations view for organization owner/admin users.
+- Added copy-token action for sharing invite tokens directly.
+- Added revoke invitation action with RPC-first (`revoke_invitation`) and table-update fallback.
+
+### Feature: Vehicle library usability upgrade
+- Added vehicle search (name/make/model/VIN/year).
+- Added sort controls (name, highest mileage, lowest mileage).
+- Empty-state messaging now distinguishes "no vehicles" vs "no search matches".

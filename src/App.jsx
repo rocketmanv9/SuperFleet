@@ -858,7 +858,9 @@ function App() {
             phone: phoneNumber || null,
           },
         ])
-      } catch {}
+      } catch {
+        // intentionally ignore profile upsert failures during signup
+      }
 
       if (!isCreate) {
         if (isValidUuid(inviteToken)) {
@@ -897,7 +899,9 @@ function App() {
             // add to organizations list
             setOrganizations((prev) => [picked, ...prev.filter((o) => o.id !== picked.id)])
           }
-        } catch {}
+        } catch {
+          // intentionally ignore ensure-org errors; app can still proceed
+        }
         setToast({ tone: 'success', message: 'Welcome aboard! Workspace created.' })
       }
       setAuthMode('signIn')
@@ -907,7 +911,9 @@ function App() {
     if (!isCreate && isValidUuid(inviteToken)) {
       try {
         localStorage.setItem(INVITE_TOKEN_STORAGE_KEY, inviteToken)
-      } catch {}
+      } catch {
+        // ignore storage access issues in restricted browser modes
+      }
     }
     setToast({
       tone: 'info',

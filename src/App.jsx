@@ -1129,34 +1129,72 @@ function App() {
       return
     }
 
-    const payload = {
-      maintenance_item_id: taskToLog.id,
-      vehicle_id: selectedVehicleId,
-      organization_id: organizationId,
-      completion_mileage: logForm.mileage ? Number(logForm.mileage) : null,
-      total_cost: logForm.cost ? Number(logForm.cost) : null,
-      labor_hours: logForm.hours ? Number(logForm.hours) : null,
-      notes: logForm.notes,
-      performed_at: new Date().toISOString(),
-    }
+    const completionMileage = logForm.mileage ? Number(logForm.mileage) : null
+    const completedAt = new Date().toISOString()
 
-    if (!payload.completion_mileage) {
+    if (!completionMileage) {
       setToast({ tone: 'warning', message: 'Completion mileage keeps history accurate.' })
       return
     }
 
     setLogSubmitting(true)
 
-    const { error } = await supabase.from('maintenance_logs').insert([payload])
+    let submitError = null
+
+    // Preferred path: backend RPC that updates both logs + next due schedule.
+    const { error: rpcError } = await supabase.rpc('mark_task_complete', {
+      p_item_id: taskToLog.id,
+      p_mileage: completionMileage,
+      p_cost: logForm.cost ? Number(logForm.cost) : null,
+      p_time_hours: logForm.hours ? Number(logForm.hours) : null,
+      p_completed_at: completedAt,
+    })
+
+    if (rpcError) {
+      // Fallback path A: schema with standard maintenance_logs columns.
+      const { error: standardInsertError } = await supabase.from('maintenance_logs').insert([
+        {
+          maintenance_item_id: taskToLog.id,
+          mileage: completionMileage,
+          cost: logForm.cost ? Number(logForm.cost) : null,
+          time_spent_hours: logForm.hours ? Number(logForm.hours) : null,
+          notes: logForm.notes,
+          completed_at: completedAt,
+        },
+      ])
+
+      if (standardInsertError) {
+        // Fallback path B: legacy/custom column names used in some deployments.
+        const { error: legacyInsertError } = await supabase.from('maintenance_logs').insert([
+          {
+            maintenance_item_id: taskToLog.id,
+            vehicle_id: selectedVehicleId,
+            organization_id: organizationId,
+            completion_mileage: completionMileage,
+            total_cost: logForm.cost ? Number(logForm.cost) : null,
+            labor_hours: logForm.hours ? Number(logForm.hours) : null,
+            notes: logForm.notes,
+            performed_at: completedAt,
+          },
+        ])
+
+        submitError = legacyInsertError ?? standardInsertError
+      }
+    }
+
     setLogSubmitting(false)
-    if (error) {
-      setToast({ tone: 'danger', message: error.message })
+
+    if (submitError) {
+      setToast({ tone: 'danger', message: submitError.message })
       return
     }
+
     setLogForm(initialLogForm)
     setTaskToLog(null)
+    setMaintenanceModalOpen(false)
     await fetchMaintenance()
     await fetchReminders()
+    await fetchVehicles()
     setToast({ tone: 'success', message: 'Maintenance log created.' })
   }
 

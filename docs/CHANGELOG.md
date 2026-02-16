@@ -16,3 +16,10 @@
 ### Documentation
 - Replaced default Vite README with project-specific docs.
 - Added `docs/ARCHITECTURE.md`.
+
+### Feature: Maintenance completion reliability (in progress cycle)
+- Updated maintenance log submit flow to prefer backend RPC `mark_task_complete` for atomic completion + due recalculation.
+- Added dual fallback insert paths for schema compatibility across deployments:
+  - standard columns (`mileage`, `cost`, `time_spent_hours`, `completed_at`)
+  - legacy/custom columns (`completion_mileage`, `total_cost`, `labor_hours`, `performed_at`)
+- After completion, app now closes modal and refreshes maintenance, reminders, and vehicles for more reliable UI state.

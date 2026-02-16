@@ -143,6 +143,26 @@ function App() {
     }
   }, [supabaseReady, supabase])
 
+  const handleCreateTemplate = useCallback(
+    async (payload) => {
+      if (!supabaseReady) {
+        throw new Error('Supabase is not configured.')
+      }
+
+      const { error } = await supabase.from('vehicle_templates').insert([payload])
+      if (error) {
+        if (error.code === '23505') {
+          throw new Error('A template with this slug already exists. Try a different year/model combo.')
+        }
+        throw error
+      }
+
+      await fetchTemplates()
+      setToast({ tone: 'success', message: 'Template created.' })
+    },
+    [supabaseReady, supabase, fetchTemplates],
+  )
+
   const currentUserName = session?.user?.user_metadata?.full_name ?? session?.user?.email ?? 'Fleet Manager'
   const membershipRole = profileOrganization?.role ?? null
   const currentUserRole =
@@ -1607,6 +1627,7 @@ function App() {
                 templates={templates}
                 templatesLoading={templatesLoading}
                 templatesError={templatesError}
+                onCreateTemplate={handleCreateTemplate}
               />
             )}
             {activeTab === 'organization' && (

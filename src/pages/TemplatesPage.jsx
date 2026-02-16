@@ -1,6 +1,16 @@
 import { useMemo, useState } from 'react'
 import { Modal } from '../components/Modal.jsx'
 
+function slugifyTemplate(make, model, year) {
+  const base = `${make || ''}-${model || ''}-${year || ''}`
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+
+  return base || `template-${Date.now()}`
+}
+
 function TemplateCard({ template, onSelect }) {
   const taskCount = template.tasks?.length ?? 0
   return (
@@ -12,11 +22,11 @@ function TemplateCard({ template, onSelect }) {
         </div>
         <span className="task-badge">{taskCount} tasks</span>
       </div>
-      
+
       {template.description && (
         <p className="template-description">{template.description}</p>
       )}
-      
+
       {taskCount > 0 && (
         <details className="template-tasks">
           <summary className="muted small">View maintenance schedule</summary>
@@ -32,10 +42,10 @@ function TemplateCard({ template, onSelect }) {
           </ul>
         </details>
       )}
-      
+
       {onSelect && (
-        <button 
-          type="button" 
+        <button
+          type="button"
           className="ghost small"
           onClick={() => onSelect(template)}
         >
@@ -46,22 +56,56 @@ function TemplateCard({ template, onSelect }) {
   )
 }
 
-function TemplatesPage({ templates, templatesLoading, templatesError }) {
+function TemplatesPage({ templates, templatesLoading, templatesError, onCreateTemplate }) {
   const [createModalOpen, setCreateModalOpen] = useState(false)
+  const [submitError, setSubmitError] = useState(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [newTemplate, setNewTemplate] = useState({
     make: '',
     model: '',
     year: '',
     engine: '',
-    description: ''
+    description: '',
   })
 
-  const handleCreateTemplate = (e) => {
-    e.preventDefault()
-    // TODO: Implement template creation
-    console.log('Creating template:', newTemplate)
-    setCreateModalOpen(false)
+  const resetForm = () => {
     setNewTemplate({ make: '', model: '', year: '', engine: '', description: '' })
+  }
+
+  const handleCreateTemplate = async (e) => {
+    e.preventDefault()
+    setSubmitError(null)
+
+    if (!onCreateTemplate) {
+      setSubmitError('Template creation handler is not configured.')
+      return
+    }
+
+    const yearValue = newTemplate.year ? Number(newTemplate.year) : null
+    if (newTemplate.year && Number.isNaN(yearValue)) {
+      setSubmitError('Year must be a number.')
+      return
+    }
+
+    const payload = {
+      make: newTemplate.make.trim(),
+      model: newTemplate.model.trim(),
+      year: yearValue,
+      engine: newTemplate.engine.trim() || null,
+      description: newTemplate.description.trim() || null,
+      slug: slugifyTemplate(newTemplate.make, newTemplate.model, yearValue),
+    }
+
+    try {
+      setIsSubmitting(true)
+      await onCreateTemplate(payload)
+      setCreateModalOpen(false)
+      resetForm()
+    } catch (error) {
+      setSubmitError(error.message || 'Failed to create template.')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const content = useMemo(() => {
@@ -97,8 +141,8 @@ function TemplatesPage({ templates, templatesLoading, templatesError }) {
             Reusable maintenance schedules for different vehicle types
           </p>
         </div>
-        <button 
-          type="button" 
+        <button
+          type="button"
           className="primary"
           onClick={() => setCreateModalOpen(true)}
         >
@@ -160,12 +204,13 @@ function TemplatesPage({ templates, templatesLoading, templatesError }) {
               rows={3}
             />
           </label>
+          {submitError && <p className="error-text">{submitError}</p>}
           <div className="modal-actions">
             <button type="button" className="ghost" onClick={() => setCreateModalOpen(false)}>
               Cancel
             </button>
-            <button type="submit" className="primary">
-              Create Template
+            <button type="submit" className="primary" disabled={isSubmitting}>
+              {isSubmitting ? 'Creating...' : 'Create Template'}
             </button>
           </div>
         </form>
